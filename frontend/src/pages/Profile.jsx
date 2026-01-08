@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { Link } from "react-router-dom";
 
 function Profile() {
     const { user } = useAuth();
-    const [progress, setProgress] = useState([]);
+    const [progressList, setProgressList] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -16,17 +17,23 @@ function Profile() {
                 Authorization: `Bearer ${token}`,
             },
         })
-            .then(res => res.json())
-            .then(result => {
+            .then((res) => res.json())
+            .then((result) => {
                 if (result.success) {
-                    setProgress(result.data);
+                    setProgressList(result.data);
                 }
                 setLoading(false);
-            });
+            })
+            .catch(() => setLoading(false));
     }, [user]);
 
-    if (!user) return null;
-    if (loading) return <p>Loading profile...</p>;
+    if (!user) {
+        return <p>Please login to view your profile.</p>;
+    }
+
+    if (loading) {
+        return <p>Loading profile...</p>;
+    }
 
     return (
         <div style={{ maxWidth: "800px", margin: "0 auto", padding: "20px" }}>
@@ -37,24 +44,28 @@ function Profile() {
 
             <h3>📚 Reading Progress</h3>
 
-            {progress.length === 0 ? (
+            {progressList.length === 0 ? (
                 <p>No reading progress yet.</p>
             ) : (
-                progress.map((p) => (
+                progressList.map((p) => (
                     <div
                         key={p._id}
                         style={{
-                            padding: "10px",
                             border: "1px solid #ddd",
+                            padding: "12px",
+                            borderRadius: "6px",
                             marginBottom: "10px",
-                            borderRadius: "5px",
                         }}
                     >
-                        <strong>{p.bookId.title}</strong>
+                        <h4>{p.bookId.title}</h4>
                         <p>
                             Last read chapter:{" "}
                             <strong>{p.currentChapterIndex + 1}</strong>
                         </p>
+
+                        <Link to={`/books/${p.bookId._id}`}>
+                            Continue Reading →
+                        </Link>
                     </div>
                 ))
             )}
