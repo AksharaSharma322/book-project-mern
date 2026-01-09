@@ -1,42 +1,32 @@
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
 
-module.exports = async function (req, res, next) {
-    const authHeader = req.header("Authorization");
+module.exports = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
 
-    if (!authHeader) {
-        return res.status(401).json({
-            success: false,
-            error: "No token, authorization denied",
-        });
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ success: false, error: "No token" });
     }
 
+    const token = authHeader.split(" ")[1];
+
+    // Verify token
     try {
-        const token = authHeader.startsWith("Bearer ")
-            ? authHeader.split(" ")[1]
-            : authHeader;
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        console.log("Token decoded:", decoded);
 
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET || "default_jwt_secret_please_change"
-        );
-
-        // ✅ THIS IS THE KEY FIX
-        const user = await User.findById(decoded.id).select("-password");
+        // Get user from the token
+        const user = await require("../models/User").findById(decoded.id).select("-password");
 
         if (!user) {
-            return res.status(401).json({
-                success: false,
-                error: "User not found",
-            });
+            console.error("User not found for ID:", decoded.id);
+            return res.status(401).json({ success: false, error: "User not found" });
         }
 
-        req.user = user; // now includes role
+        console.log("User authenticated:", user._id);
+        req.user = user;
         next();
     } catch (err) {
-        return res.status(401).json({
-            success: false,
-            error: "Token is not valid",
-        });
+        console.error("Auth Middleware Error:", err);
+        return res.status(401).json({ success: false, error: "Invalid token" });
     }
 };

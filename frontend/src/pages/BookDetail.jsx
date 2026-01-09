@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import axios from "../utils/axios";
 
 function BookDetail() {
     const { id } = useParams();
@@ -25,13 +26,15 @@ function BookDetail() {
 
     /* ---------------- FETCH BOOK ---------------- */
     useEffect(() => {
-        fetch(`/api/books/${id}`)
-            .then((res) => res.json())
-            .then((result) => {
-                if (result.success) {
-                    setBook(result.data);
+        axios.get(`/books/${id}`)
+            .then((res) => {
+                // Check if wrapped in data.data or just data
+                // Backend: res.json({ success: true, data: book })
+                const data = res.data;
+                if (data.success) {
+                    setBook(data.data);
                 } else {
-                    setError(result.error || "Failed to load book");
+                    setBook(data); // Fallback
                 }
                 setLoading(false);
             })
@@ -48,25 +51,31 @@ function BookDetail() {
             return;
         }
 
-        const token = localStorage.getItem("token");
-
-        fetch(`/api/progress?bookId=${id}`, {
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
-        })
-            .then((res) => res.json())
-            .then((result) => {
-                if (result.success) {
-                    setProgress(result.data);
+        axios.get(`/progress/my`)
+            .then((res) => {
+                if (res.data.success) {
+                    const allProgress = res.data.data;
+                    // Backend returns array of ReadingProgress objects.
+                    // Each has { userId, bookId: { ...bookData }, currentChapterIndex }
+                    // OR if bookId is not populated, { userId, bookId: "...", currentChapterIndex }
+                    const bookProgress = allProgress.find(p => {
+                        const pBookId = typeof p.bookId === 'object' ? p.bookId?._id : p.bookId;
+                        return pBookId === id;
+                    });
+                    setProgress(bookProgress || null);
                 }
-            });
+            })
+            .catch(err => console.error(err));
     }, [id, user]);
 
     /* ---------------- AUTO SELECT LAST READ CHAPTER ---------------- */
     useEffect(() => {
         if (progress) {
-            setSelectedChapter(progress.currentChapterIndex);
+            // Backend model uses 'currentChapterIndex'
+            const lastRead = progress.currentChapterIndex !== undefined
+                ? progress.currentChapterIndex
+                : 0;
+            setSelectedChapter(lastRead);
             setSelectedParagraph(0);
         }
     }, [progress]);
@@ -75,15 +84,13 @@ function BookDetail() {
     useEffect(() => {
         if (!book) return;
 
-        fetch(
-            `/api/comments?bookId=${id}&chapterIndex=${selectedChapter}&paragraphIndex=${selectedParagraph}`
-        )
-            .then((res) => res.json())
-            .then((result) => {
-                if (result.success) {
-                    setComments(result.data);
+        axios.get(`/comments?bookId=${id}&chapterIndex=${selectedChapter}&paragraphIndex=${selectedParagraph}`)
+            .then((res) => {
+                if (res.data.success) {
+                    setComments(res.data.data);
                 }
-            });
+            })
+            .catch(err => console.error(err));
     }, [id, selectedChapter, selectedParagraph, book]);
 
     /* ---------------- MARK CHAPTER AS READ ---------------- */
@@ -93,24 +100,20 @@ function BookDetail() {
             return;
         }
 
-        const token = localStorage.getItem("token");
-
-        const res = await fetch("/api/progress", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
+        try {
+            // We send 'currentChapter' as requested by user specs
+            const res = await axios.post("/progress", {
                 bookId: id,
-                currentChapterIndex: selectedChapter,
-            }),
-        });
+                currentChapter: selectedChapter,
+            });
 
-        const result = await res.json();
-
-        if (result.success) {
-            setProgress(result.data);
+            if (res.data.success) {
+                // Update local state with the new progress returned from backend
+                setProgress(res.data.data);
+            }
+        } catch (err) {
+            console.error("Save Progress Failed", err);
+            alert("Failed to save progress");
         }
     };
 
@@ -124,28 +127,22 @@ function BookDetail() {
             return;
         }
 
-        const token = localStorage.getItem("token");
         setCommentLoading(true);
 
-        const res = await fetch("/api/comments", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
+        try {
+            const res = await axios.post("/comments", {
                 bookId: id,
                 chapterIndex: selectedChapter,
                 paragraphIndex: selectedParagraph,
                 commentText,
-            }),
-        });
+            });
 
-        const result = await res.json();
-
-        if (result.success) {
-            setComments([...comments, result.data]);
-            setCommentText("");
+            if (res.data.success) {
+                setComments([...comments, res.data.data]);
+                setCommentText("");
+            }
+        } catch (err) {
+            alert("Failed to post comment");
         }
 
         setCommentLoading(false);
@@ -154,25 +151,30 @@ function BookDetail() {
     /* ---------------- STATES ---------------- */
     if (loading) return <p>Loading book...</p>;
 
-    if (error) {
+    if (error || !book) {
         return (
             <div>
-                <p>Error: {error}</p>
+                <p>Error: {error || "Book not found"}</p>
                 <Link to="/">← Back</Link>
             </div>
         );
     }
 
     /* ---------------- UI ---------------- */
+    // Model uses currentChapterIndex
+    const currentChapterVal = progress ? (progress.currentChapterIndex ?? 0) : -1;
+
     return (
         <div style={{ maxWidth: "900px", margin: "0 auto", padding: "20px" }}>
             <Link to="/">← Back to Home</Link>
 
             <h2>{book.title}</h2>
-            <h4>by {book.author}</h4>
-            <p>
-                <i>{book.description}</i>
-            </p>
+            {book.author && <h4>by {book.author}</h4>}
+            {book.description && (
+                <p>
+                    <i>{book.description}</i>
+                </p>
+            )}
 
             <hr />
 
@@ -185,7 +187,7 @@ function BookDetail() {
                         <p>
                             Last read chapter:{" "}
                             <strong>
-                                {progress ? progress.currentChapterIndex + 1 : "Not started"}
+                                {progress ? (currentChapterVal + 1) : "Not started"}
                             </strong>
                         </p>
 
@@ -204,10 +206,10 @@ function BookDetail() {
                                     style={{
                                         height: "100%",
                                         width: `${progress
-                                                ? ((progress.currentChapterIndex + 1) /
-                                                    book.chapters.length) *
-                                                100
-                                                : 0
+                                            ? ((currentChapterVal + 1) /
+                                                book.chapters.length) *
+                                            100
+                                            : 0
                                             }%`,
                                         background: "#4caf50",
                                         borderRadius: "6px",
@@ -221,11 +223,11 @@ function BookDetail() {
                             onClick={markChapterAsRead}
                             disabled={
                                 progress &&
-                                progress.currentChapterIndex >= selectedChapter
+                                currentChapterVal >= selectedChapter
                             }
                         >
                             {progress &&
-                                progress.currentChapterIndex >= selectedChapter
+                                currentChapterVal >= selectedChapter
                                 ? "Chapter already marked as read"
                                 : `Mark Chapter ${selectedChapter + 1} as Read`}
                         </button>

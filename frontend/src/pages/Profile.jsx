@@ -1,76 +1,63 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "../context/AuthContext";
-import { Link } from "react-router-dom";
+import axios from "../utils/axios";
 
-function Profile() {
-    const { user } = useAuth();
-    const [progressList, setProgressList] = useState([]);
+export default function Profile() {
+    const [user, setUser] = useState(null);
+    const [progress, setProgress] = useState([]);
+    const [error, setError] = useState("");
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user) return;
+        const loadProfile = async () => {
+            try {
+                // Fetch user profile
+                const userRes = await axios.get("/auth/me");
+                setUser(userRes.data);
 
-        const token = localStorage.getItem("token");
-
-        fetch("/api/progress/all", {
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
-        })
-            .then((res) => res.json())
-            .then((result) => {
-                if (result.success) {
-                    setProgressList(result.data);
+                // Fetch reading progress
+                try {
+                    const progressRes = await axios.get("/progress/my");
+                    // Backend returns { success: true, data: [...] }
+                    setProgress(progressRes.data.data || []);
+                } catch (progressErr) {
+                    console.error("Failed to load progress", progressErr);
                 }
+            } catch (err) {
+                console.error(err);
+                setError("Failed to load profile");
+            } finally {
                 setLoading(false);
-            })
-            .catch(() => setLoading(false));
-    }, [user]);
+            }
+        };
 
-    if (!user) {
-        return <p>Please login to view your profile.</p>;
-    }
+        loadProfile();
+    }, []);
 
-    if (loading) {
-        return <p>Loading profile...</p>;
-    }
+    if (loading) return <p>Loading profile...</p>;
+    if (error) return <p>{error}</p>;
+    if (!user) return <p>No user data found.</p>;
 
     return (
-        <div style={{ maxWidth: "800px", margin: "0 auto", padding: "20px" }}>
-            <h2>👤 My Profile</h2>
-            <p><strong>Email:</strong> {user.email}</p>
+        <div className="container">
+            <h2>My Profile</h2>
+            <div style={{ background: "#f9f9f9", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
+                <p><strong>Email:</strong> {user.email}</p>
+                <p><strong>User ID:</strong> {user._id || user.id}</p>
+            </div>
 
-            <hr />
-
-            <h3>📚 Reading Progress</h3>
-
-            {progressList.length === 0 ? (
+            <h3>Reading Progress</h3>
+            {progress.length === 0 ? (
                 <p>No reading progress yet.</p>
             ) : (
-                progressList.map((p) => (
-                    <div
-                        key={p._id}
-                        style={{
-                            border: "1px solid #ddd",
-                            padding: "12px",
-                            borderRadius: "6px",
-                            marginBottom: "10px",
-                        }}
-                    >
-                        <h4>{p.bookId.title}</h4>
-                        <p>
-                            Last read chapter:{" "}
-                            <strong>{p.currentChapterIndex + 1}</strong>
-                        </p>
-
-                        <Link to={`/books/${p.bookId._id}`}>
-                            Continue Reading →
-                        </Link>
-                    </div>
-                ))
+                <ul className="progress-list">
+                    {progress.map((p) => (
+                        <li key={p._id} style={{ padding: "10px", borderBottom: "1px solid #eee" }}>
+                            {/* p.bookId is the populated Book object */}
+                            <strong>{p.bookId?.title || "Unknown Book"}</strong> – Chapter {(p.currentChapterIndex || 0) + 1}
+                        </li>
+                    ))}
+                </ul>
             )}
         </div>
     );
 }
-
-export default Profile;

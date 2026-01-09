@@ -1,98 +1,47 @@
 const express = require("express");
 const router = express.Router();
-
 const ReadingProgress = require("../models/ReadingProgress");
-const Book = require("../models/Book");
-const auth = require("../middleware/authMiddleware");
+const authMiddleware = require("../middleware/authMiddleware");
 
-/* ======================================================
-   GET progress for ONE book (Book Detail page)
-   GET /api/progress?bookId=xxx
-====================================================== */
-router.get("/", auth, async (req, res) => {
+/**
+ * GET logged-in user's reading progress
+ */
+router.get("/my", authMiddleware, async (req, res) => {
     try {
-        const userId = req.user.id;
-        const { bookId } = req.query;
+        // Model uses 'userId', and we populate 'bookId'
+        const progress = await ReadingProgress.find({ userId: req.user._id })
+            .populate("bookId");
 
-        if (!bookId) {
-            return res.status(400).json({
-                success: false,
-                error: "bookId is required",
-            });
-        }
-
-        const progress = await ReadingProgress.findOne({
-            userId,
-            bookId,
-        });
-
-        res.json({
-            success: true,
-            data: progress,
-        });
+        res.json({ success: true, data: progress });
     } catch (err) {
-        res.status(500).json({
-            success: false,
-            error: err.message,
-        });
+        console.error(err);
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
-/* ======================================================
-   GET ALL reading progress (Profile page)
-   GET /api/progress/all
-====================================================== */
-router.get("/all", auth, async (req, res) => {
-    try {
-        const userId = req.user.id;
+/**
+ * UPDATE reading progress
+ */
+router.post("/", authMiddleware, async (req, res) => {
+    const { bookId, currentChapter } = req.body;
 
-        const progressList = await ReadingProgress.find({ userId })
-            .populate("bookId", "title author")
-            .sort({ updatedAt: -1 });
-
-        res.json({
-            success: true,
-            data: progressList,
-        });
-    } catch (err) {
-        res.status(500).json({
-            success: false,
-            error: err.message,
-        });
+    // Validate inputs
+    if (!bookId || currentChapter === undefined) {
+        return res.status(400).json({ success: false, message: "Missing fields" });
     }
-});
 
-/* ======================================================
-   CREATE / UPDATE reading progress
-   POST /api/progress
-====================================================== */
-router.post("/", auth, async (req, res) => {
     try {
-        const userId = req.user.id;
-        const { bookId, currentChapterIndex } = req.body;
-
-        if (!bookId) {
-            return res.status(400).json({
-                success: false,
-                error: "bookId is required",
-            });
-        }
-
+        // Map frontend 'currentChapter' -> model 'currentChapterIndex'
         const progress = await ReadingProgress.findOneAndUpdate(
-            { userId, bookId },
-            { currentChapterIndex },
-            { new: true, upsert: true }
+            { userId: req.user._id, bookId: bookId },
+            { currentChapterIndex: currentChapter },
+            { upsert: true, new: true }
         );
 
-        res.json({
-            success: true,
-            data: progress,
-        });
+        res.json({ success: true, data: progress });
     } catch (err) {
-        res.status(500).json({
-            success: false,
-            error: err.message,
-        });
+        console.error(err);
+        res.status(500).json({ success: false, message: "Server Error" });
     }
 });
 

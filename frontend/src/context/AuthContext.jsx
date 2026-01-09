@@ -1,4 +1,5 @@
 import { createContext, useState, useEffect, useContext } from 'react';
+import axios from '../utils/axios';
 
 const AuthContext = createContext(null);
 
@@ -18,45 +19,45 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (email, password) => {
         try {
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            });
-            const data = await response.json();
+            const response = await axios.post('/auth/login', { email, password });
+            const data = response.data;
 
-            if (data.success) {
+            if (data.token) {
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('user', JSON.stringify(data.user));
                 setUser(data.user);
                 return { success: true };
             } else {
-                return { success: false, error: data.error };
+                return { success: false, error: data.message || 'Login failed' };
             }
         } catch (err) {
-            return { success: false, error: "Network error" };
+            return {
+                success: false,
+                error: err.response?.data?.message || err.message || "Network error"
+            };
         }
     };
 
     const register = async (email, password) => {
         try {
-            const response = await fetch('/api/auth/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            });
-            const data = await response.json();
+            const response = await axios.post('/auth/register', { email, password });
+            const data = response.data;
 
-            if (data.success) {
-                // Auto login after register? Or redirect to login?
-                // For simplicity, let's ask them to login or we could auto-login if backend returned token (backend route I wrote returns user data but not token on register, check implementation).
-                // My backend register route returns `data: { id, email, role }` but NO token. So user must login.
+            if (data.token) {
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                setUser(data.user);
                 return { success: true };
             } else {
-                return { success: false, error: data.error };
+                // If backend registers but doesn't return token immediately (some do, some don't)
+                // The current backend implementation returns { token, user } on register too.
+                return { success: false, error: data.message || 'Registration failed' };
             }
         } catch (err) {
-            return { success: false, error: "Network error" };
+            return {
+                success: false,
+                error: err.response?.data?.message || err.message || "Network error"
+            };
         }
     };
 
