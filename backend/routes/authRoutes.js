@@ -20,12 +20,11 @@ router.post("/register", async (req, res) => {
             return res.status(400).json({ success: false, error: "User already exists" });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        const user = await User.create({
+        const user = new User({
             email,
-            password: hashedPassword
+            password
         });
+        await user.save();
 
         const token = jwt.sign(
             { id: user._id },
@@ -56,6 +55,7 @@ router.post("/login", async (req, res) => {
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
+        console.log("Login attempt:", email, "| Match:", isMatch);
         if (!isMatch) {
             return res.status(401).json({ success: false, error: "Invalid credentials" });
         }

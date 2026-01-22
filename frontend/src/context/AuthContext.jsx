@@ -33,7 +33,7 @@ export const AuthProvider = ({ children }) => {
         } catch (err) {
             return {
                 success: false,
-                error: err.response?.data?.message || err.message || "Network error"
+                error: err.response?.data?.error || err.response?.data?.message || err.message || "Network error"
             };
         }
     };
@@ -56,7 +56,7 @@ export const AuthProvider = ({ children }) => {
         } catch (err) {
             return {
                 success: false,
-                error: err.response?.data?.message || err.message || "Network error"
+                error: err.response?.data?.error || err.response?.data?.message || err.message || "Network error"
             };
         }
     };
